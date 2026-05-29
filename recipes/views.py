@@ -5,9 +5,9 @@ from rest_framework.response import Response
 # We import status codes to return standard HTTP status responses (like 201 Created, 400 Bad Request)
 from rest_framework import status
 # We import our database models from the local models.py file
-from .models import Cuisine, Ingredient
+from .models import Cuisine, Ingredient, Recipe
 # We import our serializers from the local serializers.py file
-from .serializers import CuisineSerializer, IngredientSerializer
+from .serializers import CuisineSerializer, IngredientSerializer, RecipeSerializer
 
 # CuisineListAPIView handles the /api/cuisines/ endpoint for listing and creating cuisines
 class CuisineListAPIView(APIView):
@@ -58,4 +58,67 @@ class IngredientListAPIView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         # If validation fails, return the validation errors and a 400 Bad Request status code
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# RecipeListAPIView handles the /api/recipes/ endpoint for listing and creating recipes
+class RecipeListAPIView(APIView):
+    
+    # get handles incoming HTTP GET requests to fetch all recipes from the database
+    def get(self, request):
+        # Fetch all recipe objects from our database using raw Django ORM query: objects.all()
+        recipes = Recipe.objects.all()
+        # Pass the queryset to the RecipeSerializer, which will automatically nest the related cuisine and ingredients on read
+        serializer = RecipeSerializer(recipes, many=True)
+        # Return the list of serialized recipe objects back to the user
+        return Response(serializer.data)
+
+    # post handles incoming HTTP POST requests to manually create a new recipe and set its relationships
+    def post(self, request):
+        # Extract the basic title string from the incoming POST payload data
+        title = request.data.get('title')
+        # Extract the instructions text from the incoming POST payload data
+        instructions = request.data.get('instructions')
+        # Extract the cuisine ID integer from the incoming POST payload data
+        cuisine_id = request.data.get('cuisine')
+        # Extract the list of ingredient ID numbers from the incoming POST payload data
+        ingredient_ids = request.data.get('ingredients', [])
+
+        # Validate that all required properties were sent in the request, returning a clean 400 Bad Request error if missing
+        if not title or not instructions or not cuisine_id:
+            return Response(
+                {"error": "Title, instructions, and cuisine fields are all required!"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Attempt to retrieve the linked Cuisine object from the database using its ID
+        try:
+            # We query the database to find the single Cuisine record matching our cuisine_id
+            cuisine = Cuisine.objects.get(id=cuisine_id)
+        except Cuisine.DoesNotExist:
+            # If no Cuisine matches the ID, we return a helpful validation error response
+            return Response(
+                {"error": f"Cuisine with ID {cuisine_id} does not exist!"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create the new Recipe instance in the database using raw ORM create commands
+        recipe = Recipe.objects.create(
+            title=title,
+            instructions=instructions,
+            cuisine=cuisine
+        )
+
+        # Check if the user passed an ingredients list in their payload
+        if ingredient_ids:
+            # Fetch all Ingredient objects whose IDs match the numbers in our ingredient_ids list
+            # We use the __in operator to perform an SQL matching query: SELECT * WHERE id IN (...)
+            ingredients = Ingredient.objects.filter(id__in=ingredient_ids)
+            # Use the .set() manager to pair the fetched ingredients to our recipe in the M2M join table
+            recipe.ingredients.set(ingredients)
+
+        # Pass the completed, saved recipe object to our serializer to output the nested JSON format
+        serializer = RecipeSerializer(recipe)
+        # Return the beautiful serialized object to the user along with a standard 201 Created status code
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 
