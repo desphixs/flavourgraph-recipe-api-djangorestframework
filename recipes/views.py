@@ -4,10 +4,22 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 # We import status codes to return standard HTTP status responses (like 201 Created, 400 Bad Request)
 from rest_framework import status
+# We import the standard PageNumberPagination class to handle pagination cleanly
+from rest_framework.pagination import PageNumberPagination
 # We import our database models from the local models.py file
 from .models import Cuisine, Ingredient, Recipe
 # We import our serializers from the local serializers.py file
 from .serializers import CuisineSerializer, IngredientSerializer, RecipeSerializer
+
+# We create a custom pagination class to define pagination settings for recipes
+class RecipePagination(PageNumberPagination):
+    # Set the default number of items to show per page
+    page_size = 10
+    # Enable users to ask for a custom page size using a query parameter (e.g. ?page_size=5)
+    page_size_query_param = 'page_size'
+    # Cap the maximum number of items a user can ever request per page
+    max_page_size = 50
+
 
 # CuisineListAPIView handles the /api/cuisines/ endpoint for listing and creating cuisines
 class CuisineListAPIView(APIView):
@@ -62,13 +74,27 @@ class IngredientListAPIView(APIView):
 # RecipeListAPIView handles the /api/recipes/ endpoint for listing and creating recipes
 class RecipeListAPIView(APIView):
     
-    # get handles incoming HTTP GET requests to fetch all recipes from the database
+    # get handles incoming HTTP GET requests to fetch all recipes with standard pagination metadata
     def get(self, request):
         # Fetch all recipe objects from our database using raw Django ORM query: objects.all()
-        recipes = Recipe.objects.all()
-        # Pass the queryset to the RecipeSerializer, which will automatically nest the related cuisine and ingredients on read
+        # We order by ID to ensure consistent, stable pagination slices across requests
+        recipes = Recipe.objects.all().order_by('id')
+        
+        # Create an instance of our custom RecipePagination page slicer
+        paginator = RecipePagination()
+        
+        # Tell the paginator to slice our queryset based on the request URL query parameters
+        page = paginator.paginate_queryset(recipes, request, view=self)
+        
+        # If pagination successfully sliced the list:
+        if page is not None:
+            # Serialize only the sliced page, not the entire database list!
+            serializer = RecipeSerializer(page, many=True)
+            # Return a special paginated response that automatically embeds standard links and count metadata
+            return paginator.get_paginated_response(serializer.data)
+            
+        # Fallback: if pagination is disabled or fails, serialize all recipes and return them directly
         serializer = RecipeSerializer(recipes, many=True)
-        # Return the list of serialized recipe objects back to the user
         return Response(serializer.data)
 
     # post handles incoming HTTP POST requests to manually create a new recipe and set its relationships
