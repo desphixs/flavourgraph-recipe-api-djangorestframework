@@ -59,3 +59,30 @@ class Recipe(models.Model):
         return self.title
 
 
+# The Review model represents a cooking tip or review left for a specific recipe
+class Review(models.Model):
+    # The tip field stores the user's cooking tip or review comment text
+    # TextField allows for long, multi-line blocks of text
+    tip = models.TextField()
+
+    # The created_at field records exactly when the review was created in the database
+    # auto_now_add=True automatically sets the current date and time when the row is first created
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # The recipe field links this review to a specific recipe in our database
+    # ForeignKey creates a One-to-Many relationship (each recipe can have many reviews)
+    # on_delete=models.CASCADE means if a recipe is deleted, all reviews for that recipe are deleted too
+    # related_name='reviews' allows us to fetch all reviews of a recipe using recipe.reviews.all()
+    recipe = models.ForeignKey(
+        Recipe,
+        on_delete=models.CASCADE,
+        related_name='reviews'
+    )
+
+    # The __str__ method defines how this model displays as a simple string representation
+    def __str__(self):
+        # We show a preview of the tip (first 30 characters) and which recipe it is for
+        return f"Tip for '{self.recipe.title}': {self.tip[:30]}..."
+
+
+

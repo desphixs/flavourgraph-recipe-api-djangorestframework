@@ -7,9 +7,9 @@ from rest_framework import status
 # We import the standard PageNumberPagination class to handle pagination cleanly
 from rest_framework.pagination import PageNumberPagination
 # We import our database models from the local models.py file
-from .models import Cuisine, Ingredient, Recipe
+from .models import Cuisine, Ingredient, Recipe, Review
 # We import our serializers from the local serializers.py file
-from .serializers import CuisineSerializer, IngredientSerializer, RecipeSerializer
+from .serializers import CuisineSerializer, IngredientSerializer, RecipeSerializer, ReviewSerializer
 
 # We create a custom pagination class to define pagination settings for recipes
 class RecipePagination(PageNumberPagination):
@@ -155,6 +155,71 @@ class RecipeListAPIView(APIView):
         serializer = RecipeSerializer(recipe)
         # Return the beautiful serialized object to the user along with a standard 201 Created status code
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+# RecipeReviewsAPIView handles listing and creating reviews for a specific recipe
+class RecipeReviewsAPIView(APIView):
+    
+    # get handles incoming HTTP GET requests to fetch all reviews associated with a specific recipe
+    # The recipe_id parameter is captured from the URL path (e.g. /api/recipes/5/reviews/)
+    def get(self, request, recipe_id):
+        # Attempt to retrieve the Recipe object matching the recipe_id from the database
+        try:
+            # We query the database to find the single Recipe record
+            recipe = Recipe.objects.get(id=recipe_id)
+        except Recipe.DoesNotExist:
+            # If the recipe doesn't exist, we return a 404 Not Found error with a helpful message
+            return Response(
+                {"error": f"Recipe with ID {recipe_id} does not exist!"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Fetch all reviews associated with the recipe using the 'reviews' related_name manager
+        # We order by descending date so the newest reviews appear at the top of the list
+        reviews = recipe.reviews.all().order_by('-created_at')
+        
+        # Pass the queryset to the ReviewSerializer, setting many=True because we serialize a list
+        serializer = ReviewSerializer(reviews, many=True)
+        # Return the list of serialized reviews in a Response wrapper (defaults to 200 OK)
+        return Response(serializer.data)
+
+    # post handles incoming HTTP POST requests to create a new review tip for a specific recipe
+    # The recipe_id parameter is captured from the URL path
+    def post(self, request, recipe_id):
+        # Attempt to retrieve the Recipe object matching the recipe_id from the database
+        try:
+            # We query the database to find the single Recipe record
+            recipe = Recipe.objects.get(id=recipe_id)
+        except Recipe.DoesNotExist:
+            # If the recipe doesn't exist, we return a 404 Not Found error with a helpful message
+            return Response(
+                {"error": f"Recipe with ID {recipe_id} does not exist!"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Extract the user's cooking tip comment text from the incoming JSON payload data
+        tip = request.data.get('tip')
+
+        # Validate that the tip field is not empty or missing
+        if not tip:
+            # If validation fails, return a 400 Bad Request error along with a helpful tip field warning
+            return Response(
+                {"error": "The tip field is required to submit a review!"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Manually create the new Review object using the raw Django ORM objects.create() command
+        # We pass in the extracted tip text and link the foreign key directly to our fetched recipe object
+        review = Review.objects.create(
+            tip=tip,
+            recipe=recipe
+        )
+
+        # Pass the newly created review object to the ReviewSerializer to format it as JSON
+        serializer = ReviewSerializer(review)
+        # Return the created review JSON along with a standard 201 Created status code
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 
 
