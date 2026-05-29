@@ -80,6 +80,16 @@ class RecipeListAPIView(APIView):
         # We order by ID to ensure consistent, stable pagination slices across requests
         recipes = Recipe.objects.all().order_by('id')
         
+        # Get the search term for specific ingredients from request query parameters (e.g. ?ingredient=tomato)
+        ingredient_param = request.query_params.get('ingredient')
+        
+        # If the search parameter was provided by the user:
+        if ingredient_param:
+            # We filter the recipe queryset to only return recipes that contain this ingredient
+            # We use the double-underscore join (ingredients__name__icontains) to query the related Ingredient name case-insensitively
+            # We use distinct() to prevent duplicate recipe entries in the results list if multiple ingredients match the query
+            recipes = recipes.filter(ingredients__name__icontains=ingredient_param).distinct()
+            
         # Create an instance of our custom RecipePagination page slicer
         paginator = RecipePagination()
         
